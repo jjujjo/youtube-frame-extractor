@@ -211,9 +211,24 @@ def process_url(url: str, output_dir: Path, logger: logging.Logger) -> str:
         return "success"
 
 
+def check_dependencies(logger: logging.Logger) -> bool:
+    missing = [tool for tool in ("yt-dlp", "ffmpeg") if shutil.which(tool) is None]
+    if missing:
+        logger.error(
+            f"Required tool(s) not found on PATH: {', '.join(missing)}. "
+            "Install them and/or restart your terminal so PATH changes take effect, "
+            "then verify with `yt-dlp --version` and `ffmpeg -version`."
+        )
+        return False
+    return True
+
+
 def main():
     logger = setup_logging(OUTPUT_DIR)
     logger.info("=== Starting YouTube frame extraction run ===")
+
+    if not check_dependencies(logger):
+        sys.exit(1)
 
     urls = read_urls(INPUT_FILE)
     logger.info(f"Loaded {len(urls)} URLs from {INPUT_FILE}")
