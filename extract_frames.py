@@ -31,8 +31,11 @@ OUTPUT_DIR = Path(r"C:\Users\jood1\Downloads\stc-images\youtube")
 
 FRAME_RATE = 0.5            # frames per second extracted by ffmpeg (1 frame / 2s)
 DEDUP_THRESHOLD = 5         # max perceptual-hash difference to count as a duplicate
-DELAY_BETWEEN_VIDEOS = 2    # seconds to wait between videos (rate-limit friendly)
+DELAY_BETWEEN_VIDEOS = 8    # seconds to wait between videos (rate-limit friendly)
 MAX_HEIGHT = 1080           # cap download quality at 1080p
+
+BOT_CHECK_COOLDOWN = 120    # seconds to pause after YouTube throws a "Sign in to confirm" bot check
+BOT_CHECK_MARKER = "Sign in to confirm"
 
 LOG_FILE_NAME = "process_log.txt"
 
@@ -89,7 +92,8 @@ def get_video_id_via_ytdlp(url: str) -> str | None:
         return None
 
 
-def download_video(url: str, dest_dir: Path, logger: logging.Logger) -> Path | None:
+def download_video(url: str, dest_dir: Path, logger: logging.Logger) -> tuple[Path | None, bool]:
+    """Returns (video_path, bot_check_triggered)."""
     output_template = str(dest_dir / "%(id)s.%(ext)s")
     cmd = [
         "yt-dlp",
@@ -103,17 +107,18 @@ def download_video(url: str, dest_dir: Path, logger: logging.Logger) -> Path | N
     try:
         subprocess.run(cmd, capture_output=True, text=True, timeout=1800, check=True)
     except subprocess.CalledProcessError as e:
-        logger.error(f"yt-dlp failed for {url}: {e.stderr.strip()[-500:]}")
-        return None
+        stderr = e.stderr.strip()
+        logger.error(f"yt-dlp failed for {url}: {stderr[-500:]}")
+        return None, BOT_CHECK_MARKER in stderr
     except subprocess.TimeoutExpired:
         logger.error(f"yt-dlp timed out for {url}")
-        return None
+        return None, False
 
     downloaded = list(dest_dir.glob("*.mp4"))
     if not downloaded:
         logger.error(f"yt-dlp reported success but no .mp4 found for {url}")
-        return None
-    return downloaded[0]
+        return None, False
+    return downloaded[0], False
 
 
 def extract_frames(video_path: Path, frames_dir: Path, fps: float, logger: logging.Logger) -> int:
@@ -167,28 +172,28 @@ def is_already_done(video_output_dir: Path) -> bool:
     return video_output_dir.exists() and any(video_output_dir.glob("frame_*.jpg"))
 
 
-def process_url(url: str, output_dir: Path, logger: logging.Logger) -> str:
-    """Returns 'success', 'skipped', or 'failed'."""
+def process_url(url: str, output_dir: Path, logger: logging.Logger) -> tuple[str, bool]:
+    """Returns (status, bot_check_triggered) where status is 'success', 'skipped', or 'failed'."""
     video_id = extract_video_id(url) or get_video_id_via_ytdlp(url)
     if not video_id:
         logger.error(f"Could not determine video ID for {url}; skipping")
-        return "failed"
+        return "failed", False
 
     video_output_dir = output_dir / video_id
 
     if is_already_done(video_output_dir):
         logger.info(f"[{video_id}] Already processed, skipping ({url})")
-        return "skipped"
+        return "skipped", False
 
     logger.info(f"[{video_id}] Processing {url}")
 
     with tempfile.TemporaryDirectory(prefix=f"ytfe_{video_id}_") as tmp_dir_str:
         tmp_dir = Path(tmp_dir_str)
 
-        video_path = download_video(url, tmp_dir, logger)
+        video_path, bot_check = download_video(url, tmp_dir, logger)
         if video_path is None:
             logger.error(f"[{video_id}] Download failed; skipping")
-            return "failed"
+            return "failed", bot_check
 
         frame_count = extract_frames(video_path, video_output_dir, FRAME_RATE, logger)
 
@@ -200,7 +205,7 @@ def process_url(url: str, output_dir: Path, logger: logging.Logger) -> str:
         if frame_count == 0:
             logger.error(f"[{video_id}] No frames extracted; skipping")
             shutil.rmtree(video_output_dir, ignore_errors=True)
-            return "failed"
+            return "failed", False
 
         removed = dedupe_frames(video_output_dir, DEDUP_THRESHOLD, logger)
         remaining = frame_count - removed
@@ -209,7 +214,7 @@ def process_url(url: str, output_dir: Path, logger: logging.Logger) -> str:
             f"[{video_id}] Done: {frame_count} frames extracted, "
             f"{removed} duplicates removed, {remaining} kept"
         )
-        return "success"
+        return "success", False
 
 
 def check_dependencies(logger: logging.Logger) -> bool:
@@ -239,14 +244,20 @@ def main():
     for i, url in enumerate(urls, start=1):
         logger.info(f"--- [{i}/{len(urls)}] {url} ---")
         try:
-            result = process_url(url, OUTPUT_DIR, logger)
+            result, bot_check = process_url(url, OUTPUT_DIR, logger)
         except Exception as e:
             logger.error(f"Unexpected error processing {url}: {e}")
-            result = "failed"
+            result, bot_check = "failed", False
 
         stats[result] += 1
 
-        if i < len(urls):
+        if bot_check:
+            logger.warning(
+                f"YouTube bot check triggered; cooling down for {BOT_CHECK_COOLDOWN}s "
+                "(make sure the Chrome profile yt-dlp reads is signed into YouTube)"
+            )
+            time.sleep(BOT_CHECK_COOLDOWN)
+        elif i < len(urls):
             time.sleep(DELAY_BETWEEN_VIDEOS)
 
     logger.info(
