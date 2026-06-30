@@ -37,6 +37,9 @@ MAX_HEIGHT = 1080           # cap download quality at 1080p
 BOT_CHECK_COOLDOWN = 120    # seconds to pause after YouTube throws a "Sign in to confirm" bot check
 BOT_CHECK_MARKER = "Sign in to confirm"
 
+CONSECUTIVE_FAILURE_THRESHOLD = 5   # back off after this many download failures in a row
+CONSECUTIVE_FAILURE_COOLDOWN = 180  # seconds to pause when the threshold is hit
+
 # Path to a Netscape-format cookies.txt file exported from your browser (e.g. via
 # the "Get cookies.txt LOCALLY" extension while signed into YouTube). Used instead
 # of --cookies-from-browser to avoid Windows DPAPI decryption issues.
@@ -255,6 +258,7 @@ def main():
     logger.info(f"Loaded {len(urls)} URLs from {INPUT_FILE}")
 
     stats = {"success": 0, "skipped": 0, "failed": 0}
+    consecutive_failures = 0
 
     for i, url in enumerate(urls, start=1):
         logger.info(f"--- [{i}/{len(urls)}] {url} ---")
@@ -265,6 +269,7 @@ def main():
             result, bot_check = "failed", False
 
         stats[result] += 1
+        consecutive_failures = consecutive_failures + 1 if result == "failed" else 0
 
         if bot_check:
             logger.warning(
@@ -272,6 +277,15 @@ def main():
                 "(make sure the Chrome profile yt-dlp reads is signed into YouTube)"
             )
             time.sleep(BOT_CHECK_COOLDOWN)
+            consecutive_failures = 0
+        elif consecutive_failures >= CONSECUTIVE_FAILURE_THRESHOLD:
+            logger.warning(
+                f"{consecutive_failures} consecutive download failures; cooling down for "
+                f"{CONSECUTIVE_FAILURE_COOLDOWN}s (likely an outdated yt-dlp or a systemic "
+                "block — consider running `pip install -U yt-dlp`)"
+            )
+            time.sleep(CONSECUTIVE_FAILURE_COOLDOWN)
+            consecutive_failures = 0
         elif result != "skipped" and i < len(urls):
             time.sleep(DELAY_BETWEEN_VIDEOS)
 
