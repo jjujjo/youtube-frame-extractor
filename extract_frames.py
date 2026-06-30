@@ -96,6 +96,7 @@ def download_video(url: str, dest_dir: Path, logger: logging.Logger) -> Path | N
         "-f", YT_DLP_FORMAT,
         "--merge-output-format", "mp4",
         "--no-playlist",
+        "--cookies-from-browser", "chrome",
         "-o", output_template,
         url,
     ]
