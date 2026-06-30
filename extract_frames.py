@@ -37,6 +37,12 @@ MAX_HEIGHT = 1080           # cap download quality at 1080p
 BOT_CHECK_COOLDOWN = 120    # seconds to pause after YouTube throws a "Sign in to confirm" bot check
 BOT_CHECK_MARKER = "Sign in to confirm"
 
+# Chrome profile directory name to read cookies from (not the display name shown in
+# Chrome's UI). Find yours by opening chrome://version in that profile and checking
+# the "Profile Path" field — the last path segment (e.g. "Default", "Profile 1",
+# "Profile 2") is what goes here.
+CHROME_PROFILE = "Profile 1"
+
 LOG_FILE_NAME = "process_log.txt"
 
 YT_DLP_FORMAT = f"bestvideo[height<={MAX_HEIGHT}]+bestaudio/best[height<={MAX_HEIGHT}]"
@@ -100,7 +106,7 @@ def download_video(url: str, dest_dir: Path, logger: logging.Logger) -> tuple[Pa
         "-f", YT_DLP_FORMAT,
         "--merge-output-format", "mp4",
         "--no-playlist",
-        "--cookies-from-browser", "chrome",
+        "--cookies-from-browser", f"chrome:{CHROME_PROFILE}",
         "-o", output_template,
         url,
     ]
