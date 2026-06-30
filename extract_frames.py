@@ -271,7 +271,7 @@ def main():
                 "(make sure the Chrome profile yt-dlp reads is signed into YouTube)"
             )
             time.sleep(BOT_CHECK_COOLDOWN)
-        elif i < len(urls):
+        elif result != "skipped" and i < len(urls):
             time.sleep(DELAY_BETWEEN_VIDEOS)
 
     logger.info(
