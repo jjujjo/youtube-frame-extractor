@@ -106,6 +106,7 @@ def download_video(url: str, dest_dir: Path, logger: logging.Logger) -> tuple[Pa
         "--merge-output-format", "mp4",
         "--no-playlist",
         "--cookies", str(COOKIES_FILE),
+        "--remote-components", "ejs:github",
         "-o", output_template,
         url,
     ]
