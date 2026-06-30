@@ -37,11 +37,10 @@ MAX_HEIGHT = 1080           # cap download quality at 1080p
 BOT_CHECK_COOLDOWN = 120    # seconds to pause after YouTube throws a "Sign in to confirm" bot check
 BOT_CHECK_MARKER = "Sign in to confirm"
 
-# Chrome profile directory name to read cookies from (not the display name shown in
-# Chrome's UI). Find yours by opening chrome://version in that profile and checking
-# the "Profile Path" field — the last path segment (e.g. "Default", "Profile 1",
-# "Profile 2") is what goes here.
-CHROME_PROFILE = "Profile 1"
+# Path to a Netscape-format cookies.txt file exported from your browser (e.g. via
+# the "Get cookies.txt LOCALLY" extension while signed into YouTube). Used instead
+# of --cookies-from-browser to avoid Windows DPAPI decryption issues.
+COOKIES_FILE = Path(r"cookies.txt")
 
 LOG_FILE_NAME = "process_log.txt"
 
@@ -106,7 +105,7 @@ def download_video(url: str, dest_dir: Path, logger: logging.Logger) -> tuple[Pa
         "-f", YT_DLP_FORMAT,
         "--merge-output-format", "mp4",
         "--no-playlist",
-        "--cookies-from-browser", f"chrome:{CHROME_PROFILE}",
+        "--cookies", str(COOKIES_FILE),
         "-o", output_template,
         url,
     ]
@@ -232,6 +231,15 @@ def check_dependencies(logger: logging.Logger) -> bool:
             "then verify with `yt-dlp --version` and `ffmpeg -version`."
         )
         return False
+
+    if not COOKIES_FILE.exists():
+        logger.error(
+            f"Cookies file not found: {COOKIES_FILE}. Export youtube.com cookies "
+            "(e.g. via the \"Get cookies.txt LOCALLY\" Chrome extension while signed "
+            "into YouTube) and save them to that path."
+        )
+        return False
+
     return True
 
 
