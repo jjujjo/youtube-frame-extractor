@@ -36,6 +36,7 @@ MAX_HEIGHT = 1080           # cap download quality at 1080p
 
 BOT_CHECK_COOLDOWN = 120    # seconds to pause after YouTube throws a "Sign in to confirm" bot check
 BOT_CHECK_MARKER = "Sign in to confirm"
+MAX_CONSECUTIVE_BOT_CHECKS = 2  # abort the run after this many bot-checks in a row (IP is blocked, cooling down won't help)
 
 CONSECUTIVE_FAILURE_THRESHOLD = 5   # back off after this many download failures in a row
 CONSECUTIVE_FAILURE_COOLDOWN = 180  # seconds to pause when the threshold is hit
@@ -259,6 +260,7 @@ def main():
 
     stats = {"success": 0, "skipped": 0, "failed": 0}
     consecutive_failures = 0
+    consecutive_bot_checks = 0
 
     for i, url in enumerate(urls, start=1):
         logger.info(f"--- [{i}/{len(urls)}] {url} ---")
@@ -270,6 +272,17 @@ def main():
 
         stats[result] += 1
         consecutive_failures = consecutive_failures + 1 if result == "failed" else 0
+        consecutive_bot_checks = consecutive_bot_checks + 1 if bot_check else 0
+
+        if consecutive_bot_checks >= MAX_CONSECUTIVE_BOT_CHECKS:
+            logger.error(
+                f"{consecutive_bot_checks} bot-checks in a row — your IP/cookies are "
+                "blocked and cooling down between attempts isn't helping. Stopping the "
+                "run here so it doesn't waste hours retrying. Re-export fresh cookies, "
+                "wait a few hours for the IP block to clear, and rerun to resume "
+                "(already-downloaded videos are skipped)."
+            )
+            break
 
         if bot_check:
             logger.warning(
